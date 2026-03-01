@@ -93,7 +93,7 @@ export function registerEvalCommand(program: Command): void {
 
         spinner.succeed(`Evaluation complete! ${reports.length} skill(s) evaluated.`);
 
-        // 输出报告
+        // Output reports
         await writeReports({
             reports,
             outputDir: evalConfig.output.dir,
@@ -101,7 +101,9 @@ export function registerEvalCommand(program: Command): void {
         });
 
         // 打印摘要
-        printSummary(reports);
+        if (!log.json) {
+            printSummary(reports);
+        }
 
         // exit-on-fail 检查
         if (evalConfig.exitOnFail?.enabled) {

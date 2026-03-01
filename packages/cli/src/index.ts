@@ -10,6 +10,41 @@ import { registerConfigCommand } from "./commands/config.js";
 import { registerTaskCommand } from "./commands/task.js";
 import { log } from "./utils/output.js";
 
+// ── Environment Check ────────────────────────────────────────────────────────
+const MIN_NODE_VERSION = 18;
+const currentVersion = process.versions.node;
+const majorVersion = parseInt(currentVersion.split(".")[0] || "0", 10);
+
+if (majorVersion < MIN_NODE_VERSION) {
+  console.error(`\x1b[31mError: eval-skills requires Node.js version >=${MIN_NODE_VERSION}.0.0\x1b[0m`);
+  console.error(`You are running version ${currentVersion}`);
+  process.exit(1);
+}
+
+// ── Global Error Handling ────────────────────────────────────────────────────
+process.on("uncaughtException", (error) => {
+  if (error instanceof Error) {
+    log.error(`Uncaught Exception: ${error.message}`);
+    if (log.level === "debug") {
+      console.error(error.stack);
+    }
+  } else {
+    log.error(`Uncaught Exception: ${String(error)}`);
+  }
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  log.error(`Unhandled Rejection: ${String(reason)}`);
+  process.exit(1);
+});
+
+process.on("SIGINT", () => {
+  console.log("\n"); // New line for cleaner exit
+  log.warn("Process interrupted by user.");
+  process.exit(0);
+});
+
 const program = new Command();
 
 program
