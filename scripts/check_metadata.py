@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 
 import argparse
 import re
+import yaml
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate skills quality")
-    parser.add_argument("--skills-dir", default=str(Path.home() / ".eval-skills" / "skills"), help="Path to skills directory")
+    # Improved default path logic: check environment variable or fallback to current dir
+    default_dir = os.environ.get("SKILLS_DIR", str(Path.cwd() / "skills"))
+    parser.add_argument("--skills-dir", default=default_dir, help="Path to skills directory")
     parser.add_argument("--min-score", type=float, default=0.0, help="Minimum score to pass")
     parser.add_argument("--output", choices=["text", "json", "markdown"], default="text", help="Output format")
     parser.add_argument("--export", help="Export report to file")
@@ -46,16 +49,21 @@ class SkillInfo:
             except Exception:
                 self.skill_md_content = ""
 
-            # Extract description length from frontmatter
-            if "description:" in self.skill_md_content:
+            # Robust Frontmatter Parsing
+            frontmatter = {}
+            if self.skill_md_content.startswith("---"):
                 try:
-                    for line in self.skill_md_content.split('\n'):
-                        if line.startswith('description:'):
-                            desc = line.replace('description:', '').strip().strip('"').strip("'")
-                            self.description_length = len(desc)
-                            break
-                except (ValueError, IndexError):
+                    # Extract content between first two ---
+                    parts = self.skill_md_content.split("---", 2)
+                    if len(parts) >= 3:
+                        frontmatter = yaml.safe_load(parts[1])
+                except Exception:
                     pass
+            
+            # Extract description length from frontmatter
+            desc = frontmatter.get("description", "")
+            if isinstance(desc, str):
+                 self.description_length = len(desc)
             
             # Assess description quality
             content_lower = self.skill_md_content.lower()
@@ -65,9 +73,10 @@ class SkillInfo:
             self.description_quality_score = sum([has_when_to_use, has_code_example, has_parameters]) / 3.0
 
             # Assess version compliance
-            match = re.search(r'version:\s*(\S+)', self.skill_md_content)
-            if match:
-                self.version_compliant = bool(re.match(r'^\d+\.\d+\.\d+', match.group(1)))
+            version = str(frontmatter.get("version", "")).strip().strip("'").strip('"')
+            if version:
+                # Relaxed regex to handle basic semver
+                self.version_compliant = bool(re.match(r'^\d+\.\d+\.\d+', version))
         
         readme_path = self.path / "README_BUDDY.md"
         self.has_readme_buddy = readme_path.exists()
@@ -149,8 +158,22 @@ def main():
     skills_dir = Path(args.skills_dir)
 
     if not skills_dir.exists():
-        print(f"Error: {skills_dir} not found", file=sys.stderr)
-        sys.exit(1)
+        # Fallback check for common paths
+        common_paths = [
+            Path.home() / ".eval-skills" / "skills",
+            Path.cwd() / "skills",
+        ]
+        found = False
+        for p in common_paths:
+            if p.exists():
+                skills_dir = p
+                found = True
+                break
+        
+        if not found:
+            print(f"Error: Skills directory not found at {skills_dir}", file=sys.stderr)
+            print(f"Checked default locations: {[str(p) for p in common_paths]}", file=sys.stderr)
+            sys.exit(1)
     
     # Scan all skills
     skills_list = []
@@ -226,3 +249,6 @@ def main():
 
     if args.min_score > 0 and avg_completion < args.min_score:
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()
